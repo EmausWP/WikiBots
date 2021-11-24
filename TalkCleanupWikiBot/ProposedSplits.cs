@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using Claymore.SharpMediaWiki;
+using TalkCleanupWikiBot.Properties;
 
 namespace Claymore.TalkCleanupWikiBot
 {
@@ -19,7 +20,7 @@ namespace Claymore.TalkCleanupWikiBot
         public ProposedSplits()
         {
             _language = "ru";
-            _cacheDir = "Cache\\" + _language + "\\ProposedSplits\\";
+            _cacheDir = string.Format("Cache{0}{1}{0}ProposedSplits{0}", Path.DirectorySeparatorChar,_language);
             Directory.CreateDirectory(_cacheDir);
         }
 
@@ -37,7 +38,7 @@ namespace Claymore.TalkCleanupWikiBot
 
             List<Day> days = new List<Day>();
             DateTime start = DateTime.Today;
-            Regex closedRE = new Regex(@"({{ВПКР-Навигация}}\s*{{(Закрыто|Closed|закрыто|closed)}})|({{(Закрыто|Closed|закрыто|closed)}}\s*{{ВПКР-Навигация}})");
+            Regex closedRE = new Regex(@"({{КР-Навигация}}\s*{{(Закрыто|Closed|закрыто|closed)}})|({{(Закрыто|Closed|закрыто|closed)}}\s*{{КР-Навигация}})");
 
             foreach (XmlNode page in pages)
             {
@@ -46,7 +47,7 @@ namespace Claymore.TalkCleanupWikiBot
                 Day day = new Day();
                 try
                 {
-                    day.Date = DateTime.Parse(date,
+                    day.Date = DateTime.Parse(RuDateTime.MonthNormalize(date),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal);
                 }
@@ -74,7 +75,7 @@ namespace Claymore.TalkCleanupWikiBot
                 if (string.IsNullOrEmpty(text))
                 {
                     Console.Out.WriteLine("Downloading " + pageName + "...");
-                    text = wiki.LoadText(pageName);
+                    text = wiki.LoadTextRev(pageName);
 
                     using (FileStream fs = new FileStream(fileName, FileMode.Create))
                     using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))
@@ -88,10 +89,8 @@ namespace Claymore.TalkCleanupWikiBot
                 if (m.Success)
                 {
                     Console.Out.WriteLine("Closing " + pageName + "...");
-                    text = text.Replace("{{ВПКР-Навигация}}", "{{ВПКР-Навигация|nocat=1}}");
-                    wiki.Save(pageName,
-                        text,
-                        "обсуждение закрыто");
+                    text = text.Replace("{{КР-Навигация}}", "{{КР-Навигация|nocat=1}}");
+                    Save(wiki, pageName, text, "обсуждение закрыто");
                     continue;
                 }
                 day.Page = WikiPage.Parse(pageName, text);
@@ -104,11 +103,11 @@ namespace Claymore.TalkCleanupWikiBot
                         new StreamWriter(_cacheDir + "MainPage.txt"))
             {
                 sw.WriteLine("== Текущие обсуждения ==\n");
-                sw.WriteLine("{{Разделение статей/Статьи, вынесенные на разделение}}\n");
+                sw.WriteLine("{{#invoke:RequestTable|TableByDate|header=Статьи, вынесенные на разделение|link=Википедия:К разделению\n");
 
                 foreach (Day day in days)
                 {
-                    sw.Write("{{Разделение статей/День|" + day.Date.ToString("yyyy-M-d") + "|\n");
+                    sw.Write("|" + day.Date.ToString("yyyy-M-d") + "|\n");
 
                     List<string> titles = new List<string>();
                     foreach (WikiPageSection section in day.Page.Sections)
@@ -140,10 +139,10 @@ namespace Claymore.TalkCleanupWikiBot
                         titles[0] = "2=<li>" + titles[0].Substring(2) + "</li>";
                     }
                     sw.Write(string.Join("\n", titles.ConvertAll(c => c).ToArray()));
-                    sw.Write("}}\n\n");
+                    sw.Write("\n\n");
                 }
 
-                sw.WriteLine("{{Разделение статей/Конец}}");
+                sw.WriteLine("}}\n\n");
                 sw.WriteLine("{{/Подвал}}");
             }
         }
@@ -180,7 +179,7 @@ namespace Claymore.TalkCleanupWikiBot
                 string pageName = page.Attributes["title"].Value;
                 string date = pageName.Substring("Википедия:К разделению/".Length);
                 DateTime day;
-                if (DateTime.TryParse(date,
+                if (DateTime.TryParse(RuDateTime.MonthNormalize(date),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out day))
                 {
@@ -201,7 +200,7 @@ namespace Claymore.TalkCleanupWikiBot
             DateTime start = minDate;
             while (start <= currentYear)
             {
-                string date = start.ToString("MMMM yyyy");
+				string date = start.ToString("MMMM yyyy", CultureInfo.CreateSpecificCulture("ru-RU"));
                 string pageName = "Википедия:Архив запросов на разделение/" + date;
                 archiveTitles.Add(pageName);
                 start = start.AddMonths(1);
@@ -211,7 +210,7 @@ namespace Claymore.TalkCleanupWikiBot
             {
                 string date = archiveName.Substring("Википедия:Архив запросов на разделение/".Length);
                 DateTime archiveDate;
-                if (!DateTime.TryParse(date,
+                if (!DateTime.TryParse(RuDateTime.MonthNormalize(date),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out archiveDate))
                 {
@@ -248,7 +247,7 @@ namespace Claymore.TalkCleanupWikiBot
                     Day day = new Day();
                     day.Archived = doc.SelectSingleNode("//page[@title=\"" + pageName + "\"]") == null;
 
-                    if (!DateTime.TryParse(dateString,
+                    if (!DateTime.TryParse(RuDateTime.MonthNormalize(dateString),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out day.Date))
                     {
@@ -268,7 +267,7 @@ namespace Claymore.TalkCleanupWikiBot
                     if (string.IsNullOrEmpty(text))
                     {
                         Console.Out.WriteLine("Downloading " + pageName + "...");
-                        text = wiki.LoadText(pageName);
+                        text = wiki.LoadTextRev(pageName);
                         CachePage(pageFileName, page.Attributes["lastrevid"].Value, text);
                     }
 
@@ -340,9 +339,7 @@ namespace Claymore.TalkCleanupWikiBot
                 }
 
                 Console.Out.WriteLine("Updating " + archiveName + "...");
-                wiki.Save(archiveName,
-                    textBuilder.ToString(),
-                    "обновление");
+                Save(wiki, archiveName, textBuilder.ToString(), "обновление");
                 using (StreamWriter sw =
                         new StreamWriter(fileName))
                 {
@@ -355,10 +352,10 @@ namespace Claymore.TalkCleanupWikiBot
         {
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("list", "embeddedin");
-            parameters.Add("eititle", "Template:ВПКР-Навигация");
+            parameters.Add("eititle", "Template:КР-Навигация");
             parameters.Add("eilimit", "max");
             parameters.Add("einamespace", "4");
-            parameters.Add("eifilterredir", "nonredirects");
+            parameters.Add("eifilterredir", "all");
 
             XmlDocument doc = wiki.Enumerate(parameters, true);
 
@@ -387,7 +384,7 @@ namespace Claymore.TalkCleanupWikiBot
                 {
                     Console.Out.WriteLine("Updating " + node.Attributes["title"].Value + "...");
                     wiki.Prepend(node.Attributes["title"].Value,
-                        "{{ВПКР-Навигация}}\n",
+                        "{{КР-Навигация}}\n",
                         "добавление навигационного шаблона");
                 }
             }
@@ -477,6 +474,27 @@ namespace Claymore.TalkCleanupWikiBot
             {
                 sw.WriteLine(revisionId);
                 sw.Write(text);
+            }
+        }
+
+        private void Save(Wiki wiki, string title, string newtext, string comment)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                try
+                {
+                    wiki.Save(title,
+                        newtext,
+                        comment);
+                    break;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    System.Threading.Thread.Sleep(10000);
+                    string cookieFile = string.Format("Cache{0}ru{0}cookie.jar", Path.DirectorySeparatorChar);
+                    WikiCache.Login(wiki, Settings.Default.Login, Settings.Default.Password, cookieFile);
+                }
             }
         }
 

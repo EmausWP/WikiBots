@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
+using TalkCleanupWikiBot.Properties;
 using Claymore.SharpMediaWiki;
 
 namespace Claymore.TalkCleanupWikiBot
@@ -46,7 +47,7 @@ namespace Claymore.TalkCleanupWikiBot
         public Cleanup(Localization l10i)
         {
             _l10i = l10i;
-            _cacheDir = "Cache\\" + _l10i.Language + "\\Cleanup\\";
+            _cacheDir = string.Format("Cache{0}{1}{0}Cleanup{0}", Path.DirectorySeparatorChar, _l10i.Language);
             
             Directory.CreateDirectory(_cacheDir);
         }
@@ -72,7 +73,7 @@ namespace Claymore.TalkCleanupWikiBot
                 Day day = new Day();
                 try
                 {
-                    day.Date = DateTime.Parse(date,
+                    day.Date = DateTime.Parse(RuDateTime.MonthNormalize(date),
                         _l10i.Culture,
                         DateTimeStyles.AssumeUniversal);
                 }
@@ -101,7 +102,7 @@ namespace Claymore.TalkCleanupWikiBot
                 if (string.IsNullOrEmpty(text))
                 {
                     Console.Out.WriteLine("Downloading " + pageName + "...");
-                    text = wiki.LoadText(pageName);
+                    text = wiki.LoadTextRev(pageName);
                     using (FileStream fs = new FileStream(fileName, FileMode.Create))
                     using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))
                     using (StreamWriter sw = new StreamWriter(gs))
@@ -116,9 +117,7 @@ namespace Claymore.TalkCleanupWikiBot
                 {
                     Console.Out.WriteLine("Closing " + pageName + "...");
                     text = _l10i.ClosePage(text);
-                    wiki.Save(pageName,
-                        text,
-                        _l10i.CloseComment);
+                    Save(wiki, pageName, text, _l10i.CloseComment);
                     continue;
                 }
 
@@ -135,17 +134,20 @@ namespace Claymore.TalkCleanupWikiBot
                 {
                     sw.WriteLine("== " + _l10i.SectionTitle + " ==\n");
                 }
-                sw.WriteLine("{{" + _l10i.TopTemplate + "}}\n");
+                sw.WriteLine("{{#invoke:RequestTable|TableByDate|days=90|header=Статьи, вынесенные на улучшение|link=Википедия:К улучшению\n");
 
                 foreach (Day day in days)
                 {
-                    sw.Write("{{" + _l10i.Template + "|" + day.Date.ToString("yyyy-M-d") + "|");
+                    sw.Write("|" + day.Date.ToString("yyyy-M-d") + "|\n");
 
                     List<string> titles = new List<string>();
                     foreach (WikiPageSection section in day.Page.Sections)
                     {
                         RemoveStrikeOut(section);
                         StrikeOutSection(section);
+                        int diffSize = 0;
+                        if (!section.Title.Contains("<s>"))
+                            diffSize = TryGetVersionDiff(wiki, section.Title, day.Date);
 
                         string result = section.Reduce("", SubsectionsList);
                         if (result.Length > 0)
@@ -161,11 +163,16 @@ namespace Claymore.TalkCleanupWikiBot
                         {
                             title = section.Title.Trim();
                         }
+                        if(diffSize > 2000 && !title.Contains("<s>"))
+                        {
+                            title = "{{Страница дополнена|" + title + "}}";
+                        }
                         titles.Add(title + result);
                     }
                     sw.Write(string.Join(" • ", titles.ConvertAll(c => c).ToArray()));
-                    sw.Write("}}\n\n");
+                    sw.Write("\n\n");
                 }
+                sw.Write("}}\n\n");
                 sw.WriteLine("{{" + _l10i.BottomTemplate + "}}");
             }
         }
@@ -203,7 +210,7 @@ namespace Claymore.TalkCleanupWikiBot
                 string pageName = page.Attributes["title"].Value;
                 string date = pageName.Substring(prefix.Length);
                 DateTime day;
-                if (DateTime.TryParse(date,
+                if (DateTime.TryParse(RuDateTime.MonthNormalize(date),
                         _l10i.Culture,
                         DateTimeStyles.AssumeUniversal, out day))
                 {
@@ -241,7 +248,7 @@ namespace Claymore.TalkCleanupWikiBot
                 string archiveName = archivePage.Attributes["title"].Value;
                 string date = archiveName.Substring(_l10i.ArchivePage.Length);
                 DateTime archiveDate;
-                if (!DateTime.TryParse(date,
+                if (!DateTime.TryParse(RuDateTime.MonthNormalize(date),
                         _l10i.Culture,
                         DateTimeStyles.AssumeUniversal, out archiveDate))
                 {
@@ -279,7 +286,7 @@ namespace Claymore.TalkCleanupWikiBot
                     Day day = new Day();
                     day.Archived = doc.SelectSingleNode("//page[@title=\"" + pageName + "\"]") == null;
 
-                    if (!DateTime.TryParse(dateString,
+                    if (!DateTime.TryParse(RuDateTime.MonthNormalize(dateString),
                         _l10i.Culture,
                         DateTimeStyles.AssumeUniversal, out day.Date))
                     {
@@ -299,7 +306,8 @@ namespace Claymore.TalkCleanupWikiBot
                     if (string.IsNullOrEmpty(text))
                     {
                         Console.Out.WriteLine("Downloading " + pageName + "...");
-                        text = wiki.LoadText(pageName);
+           //             text = wiki.LoadText(pageName);
+                        text = wiki.LoadTextRev(pageName);
                         CachePage(pageFileName, page.Attributes["lastrevid"].Value, text);
                     }
 
@@ -365,10 +373,8 @@ namespace Claymore.TalkCleanupWikiBot
                     }
                 }
 
-                Console.Out.WriteLine("Updating " + archiveName + "...");
-                wiki.Save(archiveName,
-                    textBuilder.ToString(),
-                    _l10i.MainPageUpdateComment);
+                Console.Out.WriteLine("Updating " + archiveName + "...");  
+                Save(wiki, archiveName, textBuilder.ToString(), _l10i.MainPageUpdateComment);
                 using (StreamWriter sw =
                         new StreamWriter(fileName))
                 {
@@ -384,7 +390,8 @@ namespace Claymore.TalkCleanupWikiBot
             parameters.Add("eititle", "Template:" + _l10i.NavigationTemplate);
             parameters.Add("eilimit", "max");
             parameters.Add("einamespace", "4");
-            parameters.Add("eifilterredir", "nonredirects");
+            //  parameters.Add("eifilterredir", "all");
+            Console.WriteLine("Searching template: {0}", "Template:" + _l10i.NavigationTemplate);
 
             XmlDocument doc = wiki.Enumerate(parameters, true);
 
@@ -517,6 +524,81 @@ namespace Claymore.TalkCleanupWikiBot
                 sw.WriteLine(revisionId);
                 sw.Write(text);
             }
+        }
+
+        private void Save(Wiki wiki, string title, string newtext, string comment)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                try
+                {
+                    wiki.Save(title,
+                        newtext,
+                        comment);
+                    break;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    System.Threading.Thread.Sleep(10000);
+                    string cookieFile = string.Format("Cache{0}ru{0}cookie.jar", Path.DirectorySeparatorChar);
+                    WikiCache.Login(wiki, Settings.Default.Login, Settings.Default.Password, cookieFile);
+                }
+            }
+        }
+
+        private int TryGetVersionDiff(Wiki wiki, string pageName, DateTime day) 
+        {
+            for (int i = 0; i <= 5; i++) 
+            {
+                try
+                {
+                    return GetVersionDiff(wiki, pageName, day);
+                }
+                catch (Exception e) 
+                {
+                    Console.WriteLine(e);
+                    System.Threading.Thread.Sleep(10000);
+                }
+            }
+            return 0;
+        }
+
+        private int GetVersionDiff(Wiki wiki, string pageName, DateTime day) 
+        {
+            if(!pageName.Contains("[[") || pageName.Contains("<s>"))
+                return -1;
+            string title = pageName.Replace("[", "").Replace("]", "").Trim();
+            if (title.StartsWith(":"))
+                title = title.Substring(1).Trim();
+            string dateString = string.Format("{0:yyyyMMdd}000000", day.AddDays(1));
+            ParameterCollection parameters = new ParameterCollection();
+            parameters.Add("prop", "revisions");
+            parameters.Add("titles", title);
+            parameters.Add("rvprop", "timestamp|size|ids");
+            parameters.Add("rvend", dateString);
+            parameters.Add("rvlimit", "max");
+
+            XmlDocument doc = wiki.Enumerate(parameters, true);
+
+            Dictionary<int, int> revisions = new Dictionary<int, int>();
+            XmlNodeList pages = doc.SelectNodes("//rev");            
+            foreach (XmlNode page in pages)
+            {
+                string stringSize = page.Attributes["size"].Value;
+                string stringRevId = page.Attributes["revid"].Value;   
+                int intSize = Int32.Parse(stringSize);
+                int revId = Int32.Parse(stringRevId);
+                revisions.Add(revId, intSize);
+            }
+            if (revisions.Count == 0)
+                return 0;
+            int startSize = revisions.OrderBy(r => r.Key).First().Value;
+            int endSize = revisions.OrderByDescending(r => r.Key).First().Value;
+
+
+            int diffSize = endSize - startSize;
+            return diffSize;
         }
 
         #region IModule Members

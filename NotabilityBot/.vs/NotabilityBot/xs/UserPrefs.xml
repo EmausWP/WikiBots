@@ -1,0 +1,28 @@
+﻿<Properties StartupConfiguration="{2B2791AF-D91D-415F-BF54-7CBBEEA4D2B8}|Default">
+  <MonoDevelop.Ide.Workbench ActiveDocument="NotabilityWikification.cs">
+    <Files>
+      <File FileName="NotabilityWikification.cs" Line="92" Column="25" />
+      <File FileName="Program.cs" Line="43" Column="52" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State name="__root__">
+          <Node name="NotabilityBot" expanded="True">
+            <Node name="NotabilityBot" expanded="True">
+              <Node name="NotabilityWikification.cs" selected="True" />
+            </Node>
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.ItemProperties.NotabilityBot PreferredExecutionTarget="MonoDevelop.Default" />
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore>
+      <Breakpoint file="/media/v/EABC9F9ABC9F603D/Claymore/Claymore-WikiBots-NullEdit-v1.0.1-176-g6d194da (copy)/Claymore-WikiBots-6d194da/NotabilityBot/NotabilityWikification.cs" relfile="NotabilityWikification.cs" line="314" column="1" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MultiItemStartupConfigurations />
+</Properties>

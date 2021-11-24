@@ -4,10 +4,6 @@
     <StartArguments>/ru</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <StartArguments>-kul</StartArguments>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(RunConfiguration)' == 'Default' ">
-    <StartAction>Project</StartAction>
-    <StartArguments> -kpm </StartArguments>
+    <StartArguments>-days:5</StartArguments>
   </PropertyGroup>
 </Project>

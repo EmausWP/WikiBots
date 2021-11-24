@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
+using TalkCleanupWikiBot.Properties;
 using Claymore.SharpMediaWiki;
 
 namespace Claymore.TalkCleanupWikiBot
@@ -21,7 +22,7 @@ namespace Claymore.TalkCleanupWikiBot
         public DeletionReview()
         {
             _language = "ru";
-            _cacheDir = "Cache\\" + _language + "\\DeletionReview\\";
+            _cacheDir = string.Format("Cache{0}{1}{0}DeletionReview{0}", Path.DirectorySeparatorChar, _language);
             Directory.CreateDirectory(_cacheDir);
             _results = new string[] { "Итог", "Автоматический итог" };
         }
@@ -41,7 +42,7 @@ namespace Claymore.TalkCleanupWikiBot
 
             List<Day> days = new List<Day>();
             DateTime start = DateTime.Today;
-            Regex closedRE = new Regex(@"({{ВПВУС-Навигация}}\s*{{(Закрыто|Closed|закрыто|closed)}})|({{(Закрыто|Closed|закрыто|closed)}}\s*{{ВПВУС-Навигация}})");
+            Regex closedRE = new Regex(@"({{ВУС-Навигация}}\s*{{(Закрыто|Closed|закрыто|closed)}})|({{(Закрыто|Closed|закрыто|closed)}}\s*{{ВУС-Навигация}})");
 
             foreach (XmlNode page in pages)
             {
@@ -49,7 +50,7 @@ namespace Claymore.TalkCleanupWikiBot
                 string date = pageName.Substring("Википедия:К восстановлению/".Length);
                 DateTime cutOffDate = new DateTime(2008, 11, 13);
                 Day day = new Day();
-                if (!DateTime.TryParse(date,
+                if (!DateTime.TryParse(RuDateTime.MonthNormalize(date),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out day.Date))
                 {
@@ -75,7 +76,7 @@ namespace Claymore.TalkCleanupWikiBot
                 if (string.IsNullOrEmpty(text))
                 {
                     Console.Out.WriteLine("Downloading " + pageName + "...");
-                    text = wiki.LoadText(pageName);
+                    text = wiki.LoadTextRev(pageName);
                     
                     using (FileStream fs = new FileStream(fileName, FileMode.Create))
                     using (GZipStream gs = new GZipStream(fs, CompressionMode.Compress))
@@ -85,15 +86,17 @@ namespace Claymore.TalkCleanupWikiBot
                         sw.Write(text);
                     }
                 }
-                DateTime lastEdit = DateTime.Parse(page.FirstChild.FirstChild.Attributes["timestamp"].Value, null, DateTimeStyles.AssumeUniversal);
+                DateTime lastEdit = 
+					DateTime.Parse(
+					               RuDateTime.MonthNormalize(page.FirstChild.FirstChild.Attributes["timestamp"].Value), 
+					               null,
+					               DateTimeStyles.AssumeUniversal);
                 Match m = closedRE.Match(text);
                 if ((DateTime.Now - lastEdit).TotalDays > 2 && (m.Success || day.Date < cutOffDate))
                 {
                     Console.Out.WriteLine("Closing " + pageName + "...");
-                    text = text.Replace("{{ВПВУС-Навигация}}", "{{ВПВУС-Навигация|nocat=1}}");
-                    wiki.Save(pageName,
-                        text,
-                        "обсуждение закрыто");
+                    text = text.Replace("{{ВУС-Навигация}}", "{{ВУС-Навигация|nocat=1}}");
+                    Save(wiki, pageName, text, "обсуждение закрыто");
                     continue;
                 }
                 day.Page = WikiPage.Parse(pageName, text);
@@ -143,11 +146,11 @@ namespace Claymore.TalkCleanupWikiBot
                         new StreamWriter(_cacheDir + "MainPage.txt"))
             {
                 sw.WriteLine("== Текущие обсуждения ==\n");
-                sw.WriteLine("{{Восстановление статей/Статьи, вынесенные на обсуждение восстановления}}\n");
+                sw.WriteLine("{{#invoke:RequestTable|TableByDate|header=Статьи, вынесенные на обсуждение восстановления|link=Википедия:К восстановлению\n");
 
                 foreach (Day day in days)
                 {
-                    sw.Write("{{Восстановление статей/День|" + day.Date.ToString("yyyy-M-d") + "|\n");
+                    sw.Write("|" + day.Date.ToString("yyyy-M-d") + "|\n");
 
                     List<string> titles = new List<string>();
                     foreach (WikiPageSection section in day.Page.Sections)
@@ -244,9 +247,10 @@ namespace Claymore.TalkCleanupWikiBot
                     {
                         sw.Write("</div>");
                     }
-                    sw.Write("}}\n\n");
+                    sw.Write("\n\n");
                 }
 
+                sw.WriteLine("}}\n\n");
                 sw.WriteLine("{{/Подвал}}");
             }
         }
@@ -258,7 +262,8 @@ namespace Claymore.TalkCleanupWikiBot
                         new StreamReader(_cacheDir + "MainPage.txt"))
             {
                 string text = sr.ReadToEnd();
-                wiki.SaveSection("Википедия:К восстановлению",
+                SaveSection(wiki, 
+                    "Википедия:К восстановлению",
                     "1",
                     text,
                     "обновление");
@@ -283,7 +288,7 @@ namespace Claymore.TalkCleanupWikiBot
                 string pageName = page.Attributes["title"].Value;
                 string date = pageName.Substring("Википедия:К восстановлению/".Length);
                 DateTime day;
-                if (DateTime.TryParse(date,
+                if (DateTime.TryParse(RuDateTime.MonthNormalize(date),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out day))
                 {
@@ -321,7 +326,7 @@ namespace Claymore.TalkCleanupWikiBot
                 string archiveName = archivePage.Attributes["title"].Value;
                 string date = archiveName.Substring("Википедия:Архив запросов на восстановление/".Length);
                 DateTime archiveDate;
-                if (!DateTime.TryParse(date,
+                if (!DateTime.TryParse(RuDateTime.MonthNormalize(date),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out archiveDate))
                 {
@@ -358,7 +363,7 @@ namespace Claymore.TalkCleanupWikiBot
                     Day day = new Day();
                     day.Archived = doc.SelectSingleNode("//page[@title=\"" + pageName + "\"]") == null;
 
-                    if (!DateTime.TryParse(dateString,
+                    if (!DateTime.TryParse(RuDateTime.MonthNormalize(dateString),
                         CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out day.Date))
                     {
@@ -378,7 +383,7 @@ namespace Claymore.TalkCleanupWikiBot
                     if (string.IsNullOrEmpty(text))
                     {
                         Console.Out.WriteLine("Downloading " + pageName + "...");
-                        text = wiki.LoadText(pageName);
+                        text = wiki.LoadTextRev(pageName);
                         CachePage(pageFileName, page.Attributes["lastrevid"].Value, text);
                     }
 
@@ -451,9 +456,7 @@ namespace Claymore.TalkCleanupWikiBot
                 }
 
                 Console.Out.WriteLine("Updating " + archiveName + "...");
-                wiki.Save(archiveName,
-                    textBuilder.ToString(),
-                    "обновление");
+                Save(wiki, archiveName, textBuilder.ToString(), "обновление");
                 using (StreamWriter sw =
                         new StreamWriter(fileName))
                 {
@@ -464,6 +467,8 @@ namespace Claymore.TalkCleanupWikiBot
 
         internal void UpdatePages(Wiki wiki)
         {
+            Regex stopAVRE = new Regex(@"\{\{\s*(Не подводить автоитог|не подводить автоитог|Не подводить автоматический итог|не подводить автоматический итог|Автоитог не нужен|автоитог не нужен|Не нужно автоитога|не нужно автоитога)\s*\}\}");
+			
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("generator", "categorymembers");
             parameters.Add("gcmtitle", "Категория:Википедия:Незакрытые обсуждения восстановления страниц");
@@ -488,7 +493,7 @@ namespace Claymore.TalkCleanupWikiBot
 
                 string date = pageName.Substring(prefix.Length);
                 Day day = new Day();
-                if (!DateTime.TryParse(date, CultureInfo.CreateSpecificCulture("ru-RU"),
+                if (!DateTime.TryParse(RuDateTime.MonthNormalize(date), CultureInfo.CreateSpecificCulture("ru-RU"),
                         DateTimeStyles.AssumeUniversal, out day.Date))
                 {
                     continue;
@@ -515,7 +520,7 @@ namespace Claymore.TalkCleanupWikiBot
                     try
                     {
                         Console.Out.WriteLine("Downloading " + pageName + "...");
-                        text = wiki.LoadText(pageName);
+                        text = wiki.LoadTextRev(pageName);
                         starttimestamp = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
                     }
                     catch (WikiPageNotFound)
@@ -537,9 +542,11 @@ namespace Claymore.TalkCleanupWikiBot
                 {
                     RemoveStrikeOut(section);
                     StrikeOutSection(section);
-                    if (section.Subsections.Count(s => _results.Any(r => r.ToLower() == s.Title.Trim().ToLower())) == 0)
+                    Match m = stopAVRE.Match(section.Text);
+                    bool stopAutoVerdict = m.Success;
+                    if (section.Subsections.Count(s => _results.Any(r => r.ToLower() == s.Title.Trim().ToLower())) == 0 && !stopAutoVerdict)
                     {
-                        Match m = _wikiLinkRE.Match(section.Title);
+                        m = _wikiLinkRE.Match(section.Title);
                         if (m.Success)
                         {
                             string title = m.Groups[1].Value.Trim();
@@ -560,10 +567,13 @@ namespace Claymore.TalkCleanupWikiBot
                         section.Reduce(sections, SubsectionsList);
                         foreach (WikiPageSection subsection in sections)
                         {
-                            Match m = _wikiLinkRE.Match(subsection.Title);
+                            m = stopAVRE.Match(section.Text);
+                            stopAutoVerdict = m.Success;
+                            m = _wikiLinkRE.Match(subsection.Title);
                             if (m.Success &&
                                 !subsection.Title.Contains("<s>") &&
-                                subsection.Subsections.Count(s => _results.Any(r => r.ToLower() == s.Title.Trim().ToLower())) == 0)
+                                subsection.Subsections.Count(s => _results.Any(r => r.ToLower() == s.Title.Trim().ToLower())) == 0 &&
+                                !stopAutoVerdict)
                             {
                                 string title = m.Groups[1].Value.Trim();
 
@@ -607,6 +617,7 @@ namespace Claymore.TalkCleanupWikiBot
                     }
                     if (node.Attributes["missing"] == null)
                     {
+                        Console.WriteLine(sections.Count());
                         DateTime start = day.Date;
                         parameters.Clear();
                         parameters.Add("list", "logevents");
@@ -626,84 +637,13 @@ namespace Claymore.TalkCleanupWikiBot
                             ev.Restored = item.Attributes["action"].Value == "restore";
                             ev.Deleted = item.Attributes["action"].Value == "delete";
                             ev.User = item.Attributes["user"].Value;
-                            ev.Timestamp = DateTime.Parse(item.Attributes["timestamp"].Value,
+                            ev.Timestamp = DateTime.Parse(RuDateTime.MonthNormalize(item.Attributes["timestamp"].Value),
                                 null,
                                 DateTimeStyles.AssumeUniversal);
                             events.Add(ev);
                         }
                         events.Sort(CompareDeleteLogEvents);
-                        if (events.Count > 0 &&
-                            events[0].Restored &&
-                            (DateTime.Now - events[0].Timestamp).TotalHours > 2)
-                        {
-                            Regex commentRE = new Regex(@" восстановлено: (.+)");
-                            Match m = commentRE.Match(events[0].Comment);
-                            string comment;
-                            if (m.Success)
-                            {
-                                comment = m.Groups[1].Value;
-                            }
-                            else
-                            {
-                                comment = "<nowiki>" + events[0].Comment + "</nowiki>";
-                            }
-                            string message = string.Format("Страница была восстановлена {1} администратором [[User:{0}|]]. Была указана следующая причина: «{2}». Данное сообщение было автоматически сгенерировано ботом ~~~~.\n",
-                                events[0].User,
-                                events[0].Timestamp.ToUniversalTime().ToString("d MMMM yyyy в HH:mm (UTC)"),
-                                comment);
-                            if (!titles.ContainsKey(title))
-                            {
-                                continue;
-                            }
-                            foreach (WikiPageSection section in titles[title])
-                            {
-                                WikiPageSection verdict = new WikiPageSection(" Автоматический итог ",
-                                    section.Level + 1,
-                                    message);
-                                section.AddSubsection(verdict);
-                                StrikeOutSection(section);
-                                ++results;
-                            }
-                        }
-                        else if (events.Count > 0 &&
-                            events[0].Deleted)
-                        {
-                            parameters.Clear();
-                            parameters.Add("prop", "revisions");
-                            parameters.Add("rvprop", "timestamp|user");
-                            parameters.Add("rvdir", "newer");
-                            parameters.Add("rvlimit", "1");
-                            parameters.Add("redirects");
-
-                            log = wiki.Query(QueryBy.Titles, parameters, new string[] { title });
-                            XmlNode revision = log.SelectSingleNode("//rev");
-                            if (revision != null)
-                            {
-                                string user = revision.Attributes["user"].Value;
-                                string timestamp = revision.Attributes["timestamp"].Value;
-                                DateTime time = DateTime.Parse(timestamp,
-                                    null,
-                                    DateTimeStyles.AssumeUniversal);
-
-                                string message = string.Format("Страница была создана заново {1} участником [[User:{0}|]]. Данное сообщение было автоматически сгенерировано ботом ~~~~.\n",
-                                    user,
-                                    time.ToUniversalTime().ToString("d MMMM yyyy в HH:mm (UTC)"));
-                                
-                                if (!titles.ContainsKey(title))
-                                {
-                                    continue;
-                                }
-                                foreach (WikiPageSection section in titles[title])
-                                {
-                                    WikiPageSection verdict = new WikiPageSection(" Автоматический итог ",
-                                        section.Level + 1,
-                                        message);
-                                    section.AddSubsection(verdict);
-                                    StrikeOutSection(section);
-                                    ++results;
-                                }
-                            }
-                        }
+                   
                     }
                 }
 
@@ -838,10 +778,10 @@ namespace Claymore.TalkCleanupWikiBot
         {
             ParameterCollection parameters = new ParameterCollection();
             parameters.Add("list", "embeddedin");
-            parameters.Add("eititle", "Template:ВПВУС-Навигация");
+            parameters.Add("eititle", "Template:ВУС-Навигация");
             parameters.Add("eilimit", "max");
             parameters.Add("einamespace", "4");
-            parameters.Add("eifilterredir", "nonredirects");
+            parameters.Add("eifilterredir", "all");
 
             XmlDocument doc = wiki.Enumerate(parameters, true);
 
@@ -870,10 +810,59 @@ namespace Claymore.TalkCleanupWikiBot
                 {
                     Console.Out.WriteLine("Updating " + node.Attributes["title"].Value + "...");
                     wiki.Prepend(node.Attributes["title"].Value,
-                        "{{ВПВУС-Навигация}}\n",
+                        "{{ВУС-Навигация}}\n",
                         "добавление навигационного шаблона");
                 }
             }
+        }
+
+        private string Save(Wiki wiki, string title, string newtext, string comment)
+        {
+            string revId = "";
+            for (int i = 0; i < 5; i++)
+            {
+                try
+                {
+                    revId = wiki.Save(title,
+                        newtext,
+                        comment);
+                    return revId;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    System.Threading.Thread.Sleep(10000);
+                    string cookieFile = string.Format("Cache{0}ru{0}cookie.jar", Path.DirectorySeparatorChar);
+                    WikiCache.Login(wiki, Settings.Default.Login, Settings.Default.Password, cookieFile);
+                }
+            }
+
+            return revId;
+        }
+
+        private string SaveSection(Wiki wiki, string title, string section, string newtext, string comment)
+        {
+            string revId = "";
+            for (int i = 0; i < 5; i++)
+            {
+                try
+                {
+                    revId = wiki.SaveSection(title,
+                                             section,
+                                             newtext,
+                                             comment);
+                    return revId;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    System.Threading.Thread.Sleep(10000);
+                    string cookieFile = string.Format("Cache{0}ru{0}cookie.jar", Path.DirectorySeparatorChar);
+                    WikiCache.Login(wiki, Settings.Default.Login, Settings.Default.Password, cookieFile);
+                }
+            }
+
+            return revId;
         }
 
         #region IModule Members

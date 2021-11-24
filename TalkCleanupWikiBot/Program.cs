@@ -14,18 +14,16 @@ namespace Claymore.TalkCleanupWikiBot
         static int Main(string[] args)
         {
             bool success = true;
-            foreach (var arg in args)
+            try
             {
-                if (arg == "/ru")
-                {
-                    success = UpdateRuWiki() && success;
-                }
-                else if (arg == "/uk")
-                {
-                    success = UpdateUkWiki() && success;
-                }
+                success = UpdateRuWiki(args);
+                return success ? 0 : -1;
             }
-            return success ? 0 : -1;
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                return -1;
+            }
         }
 
         private static bool UpdateUkWiki()
@@ -38,7 +36,7 @@ namespace Claymore.TalkCleanupWikiBot
             }
 
             Wiki wiki = new Wiki("http://uk.wikipedia.org/w/");
-            wiki.SleepBetweenQueries = 2;
+            wiki.SleepBetweenQueries = 1;
             Console.Out.WriteLine("Logging in as " + Settings.Default.Login + " to " + wiki.Uri + "...");
             try
             {
@@ -131,28 +129,29 @@ namespace Claymore.TalkCleanupWikiBot
             return true;
         }
 
-        private static bool UpdateRuWiki()
-        {
-            if (string.IsNullOrEmpty(Settings.Default.Login) ||
+        private static bool UpdateRuWiki(string [] args)
+        {	
+			
+			if (string.IsNullOrEmpty(Settings.Default.Login) ||
                 string.IsNullOrEmpty(Settings.Default.Password))
             {
                 Console.Out.WriteLine("Please add login and password to the configuration file.");
                 return false;
             }
 
-            Wiki wiki = new Wiki("http://ru.wikipedia.org/w/");
-            wiki.SleepBetweenQueries = 2;
+            Wiki wiki = new Wiki("https://ru.wikipedia.org/w/");
+            wiki.SleepBetweenQueries = 1;
             Console.Out.WriteLine("Logging in as " + Settings.Default.Login + " to " + wiki.Uri + "...");
             try
             {
-                Directory.CreateDirectory(@"Cache\ru");
-                string cookieFile = @"Cache\ru\cookie.jar";
+                Directory.CreateDirectory(string.Format("Cache{0}ru", Path.DirectorySeparatorChar));
+                string cookieFile = string.Format("Cache{0}ru{0}cookie.jar", Path.DirectorySeparatorChar);
                 WikiCache.Login(wiki, Settings.Default.Login, Settings.Default.Password, cookieFile);
 
-                if (!WikiCache.LoadNamespaces(wiki, @"Cache\ru\namespaces.dat"))
-                {
+                if (!WikiCache.LoadNamespaces(wiki, string.Format("Cache{0}ru{0}namespaces.dat", Path.DirectorySeparatorChar)))    
+				{
                     wiki.GetNamespaces();
-                    WikiCache.CacheNamespaces(wiki, @"Cache\ru\namespaces.dat");
+                    WikiCache.CacheNamespaces(wiki, string.Format("Cache{0}ru{0}namespaces.dat", Path.DirectorySeparatorChar));
                 }
             }
             catch (WikiException e)
@@ -162,7 +161,7 @@ namespace Claymore.TalkCleanupWikiBot
             }
             Console.Out.WriteLine("Logged in as " + Settings.Default.Login + ".");
 
-            string errorFileName = @"Cache\ru\Errors.txt";
+            string errorFileName = string.Format("Cache{0}ru{0}Errors.txt", Path.DirectorySeparatorChar);
 
             Cleanup.Localization cleanupL10i = new Cleanup.Localization();
             cleanupL10i.Language = "ru";
@@ -175,14 +174,14 @@ namespace Claymore.TalkCleanupWikiBot
             cleanupL10i.BottomTemplate = "Википедия:К улучшению/Подвал";
             cleanupL10i.Processor = RemoveOK;
             cleanupL10i.MainPageUpdateComment = "обновление";
-            cleanupL10i.closedRE = new Regex(@"({{ВПКУЛ-(Н|н)авигация}}\s*{{(Закрыто|Closed|закрыто|closed)}})|({{(Закрыто|Closed|закрыто|closed)}}\s*{{ВПКУЛ-(Н|н)авигация}})");
+            cleanupL10i.closedRE = new Regex(@"({{КУЛ-(Н|н)авигация}}\s*{{(Закрыто|Closed|закрыто|closed)}})|({{(Закрыто|Closed|закрыто|closed)}}\s*{{КУЛ-(Н|н)авигация}})");
             cleanupL10i.CloseComment = "обсуждение закрыто";
             cleanupL10i.ClosePage = ClosePageRu;
             cleanupL10i.MainPageSection = "1";
             cleanupL10i.ArchiveTemplate = "Статьи, вынесенные на улучшение";
             cleanupL10i.ArchivePage = "Википедия:К улучшению/Архив/";
             cleanupL10i.EmptyArchive = "нет обсуждений";
-            cleanupL10i.NavigationTemplate = "ВПКУЛ-Навигация";
+            cleanupL10i.NavigationTemplate = "КУЛ-Навигация";
             cleanupL10i.ArchiveFooter = "{{Улучшение статей/Конец}}";
             cleanupL10i.ArchiveHeader = "{{Навигация по архиву КУЛ}}\n{{Улучшение статей/Начало}}";
 
@@ -194,6 +193,8 @@ namespace Claymore.TalkCleanupWikiBot
             l10i.TopTemplate = "/Заголовок";
             l10i.BottomTemplate = "/Подвал";
             l10i.Results = new string[] { "Итог", "Общий итог", "Автоматический итог", "Автоитог" };
+			l10i.DisputedResults = new string[] { "Не итог", "Оспоренный итог", "Оспореный итог" };
+			l10i.PriorResults = new string[] { "Предварительный итог" };
             l10i.Language = "ru";
             l10i.MainPageUpdateComment = "обновление";
             l10i.ArchiveTemplate = "Статьи, вынесенные на удаление";
@@ -210,21 +211,32 @@ namespace Claymore.TalkCleanupWikiBot
             l10i.ChallengedResult = "Оспоренный итог";
             l10i.ArchiveHeader = "{{Навигация по архиву КУ}}\n{{Удаление статей/Начало}}\n";
             l10i.ArchiveFooter = "{{Удаление статей/Конец}}";
-
-            List<IModule> modules = new List<IModule>()
+			
+            List<IModule> modules = new List<IModule>();
+            foreach (var arg in args)
             {
-                new CategoriesForDiscussion(),
-                new DeletionReview(),
-                new ProposedSplits(),
-                new Cleanup(cleanupL10i),
-                new ProposedMerges(),
-                new ArticlesForDeletion(l10i),
-                new IncubatorReview("Википедия:Проект:Инкубатор/Мини-рецензирование"),
-                new IncubatorReview("Википедия:Проект:Инкубатор/Мини-рецензирование/Наука"),
-                new IncubatorReview("Википедия:Проект:Инкубатор/Стабы"),
-                new RequestedMoves()
-            };
-
+                if (!arg.StartsWith("-"))
+                    continue;
+                var modName = arg.Substring(1).Trim();
+                switch (modName)
+                {
+                    case "kpm":
+                        modules.Add(new RequestedMoves()); break;
+                    case "obk":
+                        modules.Add(new CategoriesForDiscussion()); break;
+                    case "krazd":
+                        modules.Add(new ProposedSplits()); break;
+                    case "kob":
+                        modules.Add(new ProposedMerges()); break;
+                    case "ku":
+                        modules.Add(new ArticlesForDeletion3(l10i)); break;
+                    case "vus":
+                        modules.Add(new DeletionReview()); break;
+                    case "kul":
+                        modules.Add(new Cleanup(cleanupL10i)); break;
+                }
+            }      
+			 
             if (!File.Exists(errorFileName))
             {
                 using (FileStream stream = File.Create(errorFileName)) { }
@@ -246,12 +258,13 @@ namespace Claymore.TalkCleanupWikiBot
                 {
                     modules[i].Run(wiki);
                 }
-                catch (WikiException)
+                catch (WikiException e)
                 {
                     using (TextWriter streamWriter = new StreamWriter(errorFileName))
                     {
                         streamWriter.Write(i);
                     }
+                    Console.WriteLine(e);
                     return false;
                 }
                 catch (WebException)
@@ -287,8 +300,8 @@ namespace Claymore.TalkCleanupWikiBot
 
         static string ClosePageRu(string text)
         {
-            string result = text.Replace("{{ВПКУЛ-Навигация}}", "{{ВПКУЛ-Навигация|nocat=1}}");
-            return result.Replace("{{ВПКУЛ-навигация}}", "{{ВПКУЛ-Навигация|nocat=1}}");
+            string result = text.Replace("{{КУЛ-Навигация}}", "{{КУЛ-Навигация|nocat=1}}");
+            return result.Replace("{{КУЛ-навигация}}", "{{КУЛ-Навигация|nocat=1}}");
         }
 
         static string ClosePageUk(string text)
@@ -326,6 +339,8 @@ namespace Claymore.TalkCleanupWikiBot
         public string TopTemplate;
         public string BottomTemplate;
         public string[] Results;
+		public string[] DisputedResults;
+		public string[] PriorResults;
         public string MainPageUpdateComment;
         public string ArchiveTemplate;
         public string ArchivePage;
